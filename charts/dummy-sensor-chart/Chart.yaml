@@ -1,0 +1,17 @@
+apiVersion: v2
+name: sensors
+description: A Helm chart for deploying dummy sensors that expose metrics and send logs and traces to Grafana Alloy
+type: application
+version: 0.1.0
+appVersion: 1.0.0
+maintainers:
+  - name: Your Name
+    email: your.email@example.com
+keywords:
+  - sensor
+  - monitoring
+  - prometheus
+  - alloy
+home: https://github.com/yourrepo/sensors-chart
+sources:
+  - https://github.com/yourrepo/sensors-chart

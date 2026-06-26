@@ -1,0 +1,338 @@
+controller:
+  type: statefulset
+  replicas: 3
+
+alloy:
+  extraEnv:
+    - name: MIMIR_PUSH_URL
+      value: "http://mimir-gateway.mimir-monitoring.svc.cluster.local/api/v1/push"
+    - name: LOKI_PUSH_URL
+      value: "http://loki-gateway.loki-monitoring.svc.cluster.local/loki/api/v1/push"
+    - name: TEMPO_PUSH_URL
+      value: "http://tempo-distributor.tempo-monitoring.svc.cluster.local:4317"
+
+  clustering:
+    enabled: true
+
+  extraPorts:
+    - name: "loki-push"
+      port: 3100
+      targetPort: 3100
+      protocol: TCP
+    - name: "tempo-push"
+      port: 4317
+      targetPort: 4317
+      protocol: TCP
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 512Mi
+    limits:
+      memory: 1Gi
+
+  serviceAccount:
+    create: true
+    name: ""
+  rbac:
+    create: true
+
+  configMap:
+    content: |
+      discovery.kubernetes "cadvisor_pods" {
+        role = "pod"
+        namespaces {
+          names = ["cadvisor"]
+        }
+      }
+      discovery.relabel "cadvisor_pod_relabel" {
+        targets = discovery.kubernetes.cadvisor_pods.targets
+
+        rule {
+          source_labels = ["__meta_kubernetes_pod_phase"]
+          regex         = "Succeeded|Failed"
+          action        = "drop"
+        }
+
+        rule {
+          source_labels = ["__meta_kubernetes_pod_ip"]
+          regex         = ""
+          action        = "drop"
+        }
+
+        rule {
+          source_labels = ["__address__"]
+          regex         = "(.+):\\d+"
+          target_label  = "__address__"
+          replacement   = "$1:8080"
+          action        = "replace"
+        }
+
+        rule {
+          source_labels = ["__meta_kubernetes_namespace"]
+          action        = "replace"
+          target_label  = "namespace"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_name"]
+          action        = "replace"
+          target_label  = "pod"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_container_name"]
+          action        = "replace"
+          target_label  = "container"
+        }
+      }
+
+      discovery.kubernetes "mimir_pods" {
+        role = "pod"
+        namespaces {
+          names = ["mimir-monitoring"]
+        }
+      }
+      discovery.relabel "mimir_pod_relabel" {
+        targets = discovery.kubernetes.mimir_pods.targets
+        rule {
+          source_labels = ["__meta_kubernetes_pod_label_name"]
+          regex = ""
+          action = "drop"
+        }
+        rule {
+            source_labels = ["__meta_kubernetes_pod_container_port_name"]
+            regex = ".*-metrics"
+            action = "keep"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_phase"]
+          regex = "Succeeded|Failed"
+          action = "drop"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_namespace", "__meta_kubernetes_pod_label_name"]
+          replacement = "$1"
+          separator = "/"
+          action = "replace"
+          target_label = "job"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_namespace"]
+          action        = "replace"
+          target_label  = "namespace"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_name"]
+          action        = "replace"
+          target_label  = "pod"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_container_name"]
+          action        = "replace"
+          target_label  = "container"
+        }
+      }
+
+      discovery.kubernetes "sensor_pods" {
+        role = "pod"
+        namespaces {
+          names = ["sensor-monitoring"]
+        }
+      }
+      discovery.relabel "sensor_pod_relabel" {
+        targets = discovery.kubernetes.sensor_pods.targets
+        rule {
+          source_labels = ["__meta_kubernetes_pod_phase"]
+          regex = "Succeeded|Failed"
+          action = "drop"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_container_port_number"]
+          regex = "8000"
+          action = "keep"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_annotation_prometheus_io_path"]
+          regex = "(.+)"
+          target_label = "__metrics_path__"
+          replacement = "$1"
+          action = "replace"
+        }
+        rule {
+          regex = "__meta_kubernetes_pod_annotation_prometheus_io_path"
+          action = "labeldrop"
+        }
+        rule {
+          source_labels = ["__address__"]
+          regex = "(.+):\\d+"
+          target_label = "__address__"
+          replacement = "$1:8000"
+          action = "replace"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_namespace", "__meta_kubernetes_pod_label_app"]
+          replacement = "$1/$2"
+          separator = "/"
+          action = "replace"
+          target_label = "job"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_namespace"]
+          action = "replace"
+          target_label = "namespace"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_name"]
+          action = "replace"
+          target_label = "pod"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_container_name"]
+          action = "replace"
+          target_label = "container"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_node_name"]
+          action = "replace"
+          target_label = "node"
+        }
+        rule {
+          action = "labelmap"
+          regex = "__meta_kubernetes_pod_label_(.+)"
+        }
+      }
+
+      prometheus.scrape "cadvisor_pods" {
+        clustering {
+          enabled = true
+        }
+        targets    = concat(
+          discovery.relabel.cadvisor_pod_relabel.output,
+        )
+        forward_to = [prometheus.relabel.cadvisor_filter.receiver]
+        scrape_interval = "60s"
+        scrape_timeout  = "30s"
+        body_size_limit = "500MiB"
+      }
+
+      prometheus.relabel "cadvisor_filter" {
+        forward_to = [prometheus.remote_write.prometheus_write.receiver]
+
+        rule {
+          source_labels = ["__name__"]
+          regex         = "container_(cpu_usage_seconds_total|memory_working_set_bytes|network_receive_bytes_total|network_transmit_bytes_total|fs_reads_bytes_total|fs_writes_bytes_total)"
+          action        = "keep"
+        }
+
+        rule {
+          source_labels = ["container"]
+          regex         = ""
+          action        = "drop"
+        }
+      }
+
+      prometheus.scrape "prometheus_pods" {
+        clustering {
+          enabled = true
+        }
+        targets    = concat(
+          discovery.relabel.sensor_pod_relabel.output,
+          discovery.relabel.mimir_pod_relabel.output,
+        )
+        forward_to = [prometheus.remote_write.prometheus_write.receiver]
+        scrape_interval = "15s"
+        scrape_timeout  = "10s"
+      }
+
+      prometheus.remote_write "prometheus_write" {
+        endpoint {
+          url = env("MIMIR_PUSH_URL")
+          send_native_histograms = true
+        }
+      }
+
+
+      // Loki config
+      local.file_match "local_files" {
+        path_targets = [{"__path__" = "/var/log/*.log"},{"__path__" = "/tmp/*.log"}]
+        sync_period = "5s"
+      }
+      loki.source.file "log_scrape" {
+        targets    = local.file_match.local_files.targets
+        forward_to = [loki.process.filter_logs.receiver]
+        tail_from_end = false
+      }
+      loki.process "filter_logs" {
+        stage.drop {
+          source = ""
+          expression  = ".*undefined value for sensor.*"
+          drop_counter_reason = "noisy"
+        }
+        forward_to = [loki.write.grafana_loki.receiver]
+      }
+      loki.source.api "ingest" {
+        http {
+          listen_address = "0.0.0.0"
+          listen_port    = 3100
+        }
+        forward_to = [loki.write.grafana_loki.receiver]
+      }
+      loki.write "grafana_loki" {
+          endpoint {
+              url = env("LOKI_PUSH_URL")
+              headers = {
+                "X-Scope-OrgID" = "foo",
+              }
+          }
+      }
+
+
+      // Tempo config
+      otelcol.receiver.otlp "default" {
+        http {}
+        grpc {}
+
+        output {
+          traces  = [otelcol.processor.k8sattributes.default.input]
+        }
+      }
+
+      otelcol.processor.k8sattributes "default" {
+        extract {
+          metadata = [
+            "k8s.namespace.name",
+            "k8s.pod.name",
+            "k8s.container.name",
+          ]
+        }
+
+        output {
+          traces = [otelcol.exporter.otlp.default.input]
+        }
+      }
+
+      otelcol.exporter.otlp "default" {
+        client {
+          endpoint = env("TEMPO_PUSH_URL")
+          tls {
+            insecure = true
+          }
+        }
+      }
+
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 472
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+    readOnlyRootFilesystem: false
+
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 472
+    fsGroup: 472
+
+# Disable ServiceMonitor for monitoring Alloy itself
+serviceMonitor:
+  enabled: false

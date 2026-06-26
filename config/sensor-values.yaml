@@ -1,0 +1,10 @@
+image: reflexlevel0/dummy_sensor:latest
+replicaCount: 1
+alloy:
+  url: http://alloy.alloy-monitoring.svc.cluster.local
+  logs_port: 3100
+  traces_grpc_port: 4317
+sensors:
+  - id: 1
+  - id: 2
+  - id: 3

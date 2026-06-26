@@ -1,0 +1,68 @@
+{{- range .Values.sensors }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sensor-{{ .id }}
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8000"
+    prometheus.io/path: "/metrics"
+spec:
+  selector:
+    app: sensor-{{ .id }}
+  ports:
+    - name: http
+      protocol: TCP
+      port: 8000
+      targetPort: 8000
+    - name: metrics
+      protocol: TCP
+      port: 8001
+      targetPort: 8001
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: sensor-{{ .id }}
+  labels:
+    app: sensor-group
+spec:
+  replicas: 1
+  serviceName: sensor-{{ .id }}
+  selector:
+    matchLabels:
+      app: sensor-{{ .id }}
+  template:
+    metadata:
+      labels:
+        app: sensor-{{ .id }}
+    spec:
+      containers:
+      - name: sensor
+        image: {{ $.Values.image }}
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8000
+          name: http
+        - containerPort: 8001
+          name: metrics
+        env:
+        - name: ID
+          value: "{{ .id }}"
+        - name: ALLOY_URL
+          value: "{{ $.Values.alloy.url }}"
+        - name: ALLOY_LOGS_PORT
+          value: "{{ $.Values.alloy.logs_port }}"
+        - name: ALLOY_TRACES_GRPC_PORT
+          value: "{{ $.Values.alloy.traces_grpc_port }}"
+        resources:
+          requests:
+            memory: "24Mi"
+            cpu: "10m"
+          limits:
+            memory: "48Mi"
+            cpu: "25m"
+---
+{{- end }}

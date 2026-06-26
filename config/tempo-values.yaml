@@ -1,0 +1,80 @@
+traces:
+  otlp:
+    http:
+      enabled: true
+      receiverConfig: {}
+      port: 4318
+    grpc:
+      enabled: true
+      receiverConfig: {}
+      port: 4317
+
+metricsGenerator:
+  enabled: true
+  config:
+    storage:
+      remote_write:
+        - url: http://mimir-gateway.mimir-monitoring.svc:80/api/v1/push
+          send_exemplars: true
+    #   headers:
+    #     x-scope-orgid: operations
+    traces_storage:
+      path: /var/tempo/traces
+
+query_frontend:
+  metrics:
+    query_backend_after: 0s
+    query_ingester_until: 30m
+
+tempo:
+  memberlist:
+    service:
+      publishNotReadyAddresses: true
+#
+overrides:
+  defaults:
+    metrics_generator:
+      processors:
+        - span-metrics-latency
+        - span-metrics-count
+        - local-blocks
+        - service-graphs
+
+minio:
+  enabled: false
+
+storage:
+  trace:
+    backend: s3
+    s3:
+      bucket: tempo
+      endpoint: minio.minio-monitoring.svc.cluster.local:9000
+      secret_key: externalSecretKey
+      access_key: externalAccessKey
+      insecure: true
+
+ingester:
+  replicas: 3
+  config:
+    replication_factor: 3
+  zoneAwareReplication:
+    enabled: false
+  affinity:
+
+querier:
+  replicas: 3
+  affinity:
+
+queryFrontend:
+  replicas: 2
+  affinity:
+
+distributor:
+  replicas: 3
+  affinity:
+
+compactor:
+  replicas: 1
+  affinity:
+
+replicas: 1

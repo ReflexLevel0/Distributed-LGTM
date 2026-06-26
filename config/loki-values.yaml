@@ -1,0 +1,127 @@
+loki:
+  schemaConfig:
+    configs:
+      - from: '2024-04-01'
+        store: tsdb
+        object_store: s3
+        schema: v13
+        index:
+          prefix: loki_index_
+          period: 24h
+  ingester:
+    chunk_encoding: snappy
+  querier:
+    max_concurrent: 4
+  pattern_ingester:
+    enabled: true
+  limits_config:
+    allow_structured_metadata: true
+    volume_enabled: true
+  ruler:
+    enable_api: true
+  storage:
+    type: s3
+    s3:
+      endpoint: minio.minio-monitoring.svc.cluster.local:9000
+      secretAccessKey: externalSecretKey
+      accessKeyId: externalAccessKey
+      insecure: true
+      s3ForcePathStyle: true
+    bucketNames:
+      chunks: loki-chunks
+      ruler: loki-ruler
+  commonConfig:
+    replication_factor: 3
+
+minio:
+  enabled: false
+
+chunksCache:
+  allocatedMemory: 2048
+  enabled: false
+
+resultsCache:
+  enabled: false
+
+deploymentMode: Distributed
+
+gateway:
+  replicas: 2
+  service:
+    type: LoadBalancer
+  affinity:
+ingester:
+  replicas: 3
+  affinity:
+  zoneAwareReplication:
+    enabled: false
+querier:
+  replicas: 3
+  affinity:
+queryFrontend:
+  replicas: 2
+  affinity:
+queryScheduler:
+  replicas: 2
+  affinity:
+distributor:
+  replicas: 3
+  affinity:
+  kedaAutoscaling:
+    enabled: true
+    pollingInterval: 60
+    minReplicas: 1
+    maxReplicas: 8
+    cooldownPeriod: null
+    behavior:
+      scaleUp:
+        stabilizationWindowSeconds: 120
+        policies:
+          - type: Pods
+            value: 1
+            periodSeconds: 60
+        selectPolicy: Max
+      scaleDown:
+        stabilizationWindowSeconds: 300
+        policies:
+          - type: Pods
+            value: 1
+            periodSeconds: 120
+        selectPolicy: Max
+    triggers:
+      - type: prometheus
+        metadata:
+          serverAddress: http://mimir-gateway.mimir-monitoring.svc.cluster.local/prometheus
+          metricName: always_true
+          query: |
+            sum(
+              avg_over_time(
+                container_memory_working_set_bytes{
+                  container_label_io_kubernetes_container_name="distributor",
+                  container_label_io_kubernetes_pod_namespace="loki-monitoring"
+                }[2m]
+              )
+            )
+          threshold: "100000000"
+          tenantName: "foo"
+
+compactor:
+  replicas: 1
+  affinity:
+indexGateway:
+  replicas: 2
+  affinity:
+
+backend:
+  replicas: 0
+  affinity:
+read:
+  replicas: 0
+  affinity:
+write:
+  replicas: 0
+
+  affinity:
+singleBinary:
+  replicas: 0
+  affinity:

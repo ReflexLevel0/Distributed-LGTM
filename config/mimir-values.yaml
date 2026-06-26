@@ -1,0 +1,60 @@
+minio:
+  enabled: false
+
+kafka:
+  enabled: false
+
+mimir:
+  structuredConfig:
+    common:
+      storage:
+        backend: s3
+        s3:
+          endpoint: minio.minio-monitoring.svc.cluster.local:9000
+          secret_access_key: externalSecretKey
+          access_key_id: externalAccessKey
+          insecure: true
+
+    blocks_storage:
+      s3:
+        bucket_name: mimir-blocks
+    alertmanager_storage:
+      s3:
+        bucket_name: mimir-alertmanager
+    ruler_storage:
+      s3:
+        bucket_name: mimir-ruler
+
+    ingest_storage:
+      kafka:
+        address: kafka-cluster-kafka-bootstrap.kafka.svc.cluster.local:9092
+        topic: mimir-ingest
+        auto_create_topic_enabled: true
+        auto_create_topic_default_partitions: 1000
+
+distributor:
+  affinity:
+  replicas: 3
+ingester:
+  affinity:
+  replicas: 3
+  zoneAwareReplication:
+    enabled: false
+querier:
+  affinity:
+  replicas: 3
+query_frontend:
+  affinity:
+  replicas: 2
+query_scheduler:
+  affinity:
+  replicas: 2
+store_gateway:
+  affinity:
+  replicas: 2
+gateway:
+  affinity:
+  replicas: 2
+compactor:
+  affinity:
+  replicas: 1

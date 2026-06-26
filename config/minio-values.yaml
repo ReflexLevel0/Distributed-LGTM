@@ -1,0 +1,20 @@
+rootUser: rootUser
+rootPassword: rootPass123
+persistence:
+  enabled: true
+  size: 5Gi
+buckets:
+  - name: mimir-blocks
+  - name: mimir-alertmanager
+  - name: mimir-ruler
+  - name: loki-chunks
+  - name: loki-ruler
+  - name: tempo
+replicas: 5
+resources:
+  requests:
+    memory: 500Mi
+users:
+  - accessKey: externalAccessKey
+    secretKey: externalSecretKey
+    policy: readwrite

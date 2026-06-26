@@ -1,0 +1,43 @@
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: mimir-distributor
+  namespace: mimir-monitoring
+spec:
+  scaleTargetRef:
+    name: mimir-distributor
+  minReplicaCount: 1
+  maxReplicaCount: 5
+  advanced:
+    horizontalPodAutoscalerConfig:
+      behavior:
+        scaleUp:
+          stabilizationWindowSeconds: 120
+          policies:
+            - type: Pods
+              value: 1
+              periodSeconds: 60
+          selectPolicy: Max
+        scaleDown:
+          stabilizationWindowSeconds: 300
+          policies:
+            - type: Pods
+              value: 1
+              periodSeconds: 120
+          selectPolicy: Max
+  triggers:
+    - type: prometheus
+      metadata:
+        serverAddress: http://mimir-gateway.mimir-monitoring.svc.cluster.local/prometheus
+        metricName: always_true
+        query: |
+          sum(
+            avg_over_time(
+              container_memory_working_set_bytes{
+                container_label_io_kubernetes_container_name="distributor",
+                container_label_io_kubernetes_pod_namespace="mimir-monitoring"
+              }[2m]
+            )
+          )
+        threshold: "100000000"
+        tenantName: "foo"
