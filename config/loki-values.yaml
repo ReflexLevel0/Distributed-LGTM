@@ -38,7 +38,7 @@ minio:
 
 chunksCache:
   allocatedMemory: 2048
-  enabled: false
+  enabled: true
 
 resultsCache:
   enabled: false
@@ -72,7 +72,7 @@ distributor:
     pollingInterval: 60
     minReplicas: 1
     maxReplicas: 8
-    cooldownPeriod: null
+    cooldownPeriod: 180
     behavior:
       scaleUp:
         stabilizationWindowSeconds: 120
@@ -91,7 +91,8 @@ distributor:
     triggers:
       - type: prometheus
         metadata:
-          serverAddress: http://mimir-gateway.mimir-monitoring.svc.cluster.local/prometheus
+          serverAddress: 
+            http://mimir-gateway.mimir-monitoring.svc.cluster.local/prometheus
           metricName: always_true
           query: |
             sum(
@@ -102,8 +103,8 @@ distributor:
                 }[2m]
               )
             )
-          threshold: "100000000"
-          tenantName: "foo"
+          threshold: '100000000'
+          tenantName: foo
 
 compactor:
   replicas: 1

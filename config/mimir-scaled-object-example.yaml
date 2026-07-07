@@ -25,6 +25,9 @@ spec:
               value: 1
               periodSeconds: 120
           selectPolicy: Max
+  fallback:
+    failureThreshold: 3
+    replicas: 3
   triggers:
     - type: prometheus
       metadata:
@@ -39,5 +42,5 @@ spec:
               }[2m]
             )
           )
-        threshold: "100000000"
+        threshold: "200000000"
         tenantName: "foo"

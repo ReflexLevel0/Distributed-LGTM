@@ -15,6 +15,19 @@ class LokiDeployment(Enum):
     SIMPLE_SCALABLE = 2
     MICROSERVICE = 3
 
+
+def update_dict_list(dict_list, selector, setter, value):
+    contains_value = False
+    for v in dict_list:
+        if selector(v) is False:
+            continue
+        setter(v)
+        contains_value = True
+        break
+    if contains_value is False:
+        dict_list.append(value)
+
+
 def loki_deployment_mode_to_str(deployment_mode: int):
     match deployment_mode:
         case LokiDeployment.MONOLITHIC:
@@ -279,6 +292,18 @@ def configure_tempo(disable_affinity: bool):
             query_frontend_replicas = number_input("Query frontend replicas", query_frontend_replicas)
             distributor_replicas = number_input("Distributor replicas", distributor_replicas)
 
+    # updating TEMPO_PUSH_URL in Alloy config based on chosen deployment mode
+    if tempo_deploy_mode == TempoDeployment.MONOLITHIC:
+        tempo_url = "http://tempo.tempo-monitoring.svc.cluster.local:4317"
+    else:
+        tempo_url = "http://tempo-distributor.tempo-monitoring.svc.cluster.local:4317"
+    with open('../config/alloy-values.yaml', 'r') as f: 
+        data: CommentedMap = yaml.load(f)
+        extraEnv = data['alloy']['extraEnv']
+        update_dict_list(extraEnv, lambda v: v['name'] == 'TEMPO_PUSH_URL', lambda v: v.update({'value': tempo_url}), {'name': 'TEMPO_PUSH_URL', 'value': tempo_url})
+    update_yaml(data, '../config/alloy-values.yaml')
+
+    # updating Tempo config
     data: CommentedMap = yaml.load(f"""
 ingester:
   replicas: {ingester_replicas}
@@ -307,6 +332,16 @@ replicas: {single_binary_replicas}
 
     update_yaml(data, '../config/tempo-values.yaml')
     return f"helm install --create-namespace -n tempo-monitoring -f ../config/tempo-values.yaml tempo grafana-community/{"tempo --version 2.1.0" if tempo_deploy_mode == 1 else "tempo-distributed --version 2.18.0"}"
+
+
+def configure_alloy():
+    replica_count = number_input("Number of replicas", 3)
+    data = yaml.load(f"""
+controller:
+  replicas: {replica_count}
+""")
+    update_yaml(data, '../config/alloy-values.yaml')
+    return "helm install --create-namespace -n alloy-monitoring -f ../config/alloy-values.yaml alloy grafana/alloy --version 1.8.1"
 
 
 def configure_sensors():
@@ -344,14 +379,33 @@ def configure_loggers():
 
 
 def configure_minio(disable_affinity: bool):
-    minio_replicas = number_input("Minio replicas", 5)
+    minio_replicas = number_input("Number of replicas", 5)
+    minio_persistence = boolean_input("Persistence enabled", True)
+    minio_persistence_size = 0
+    if minio_persistence:
+        minio_persistence_size = number_input("Persistence size (GiB)", 5)
+    mimir_retention_days = number_input("Mimir data retention (days)", 90)
+    loki_retention_days = number_input("Loki data retention (days)", 30)
+    tempo_retention_days = number_input("Tempo data retention (days)", 30)
+
+    with open('../config/minio-retention-job.yaml', 'r') as f:
+        data = yaml.load(f)
+    env = data['spec']['template']['spec']['containers'][0]['env']
+    update_dict_list(env, lambda v: v['name'] == 'MIMIR_RETENTION_DAYS', lambda v: v.update({'value': str(mimir_retention_days)}), {'name': 'MIMIR_RETENTION_DAYS', 'value': str(mimir_retention_days)})
+    update_dict_list(env, lambda v: v['name'] == 'LOKI_RETENTION_DAYS', lambda v: v.update({'value': str(loki_retention_days)}), {'name': 'LOKI_RETENTION_DAYS', 'value': str(loki_retention_days)})
+    update_dict_list(env, lambda v: v['name'] == 'TEMPO_RETENTION_DAYS', lambda v: v.update({'value': str(tempo_retention_days)}), {'name': 'TEMPO_RETENTION_DAYS', 'value': str(tempo_retention_days)})
+    update_yaml(data, '../config/minio-retention-job.yaml')
 
     data: CommentedMap = yaml.load(f"""
 replicas: {minio_replicas}
+persistence:
+  enabled: {"true" if minio_persistence else "false"}
+  size: {minio_persistence_size}Gi
     """)
 
     update_yaml(data, '../config/minio-values.yaml')
     return f"""helm install --create-namespace -n minio-monitoring -f ../config/minio-values.yaml minio minio/minio --version 5.4.0
+kubectl apply -n minio-monitoring -f ../config/minio-retention-configmap.yaml
 kubectl apply -n minio-monitoring -f ../config/minio-retention-job.yaml"""
 
 
@@ -380,66 +434,95 @@ kubectl apply -n kafka -f ../config/kafka-values.yaml -f ../config/kafka-broker-
 
 disable_affinity = boolean_input("Disable affinity (should only be disabled for testing/development)", default=False)
 
+print("\nMINIO")
 minio_install_str = configure_minio(disable_affinity)
+
+print("\nKAFKA")
 kafka_install_str = configure_kafka(disable_affinity)
 
+print("\nMIMIR")
+mimir_install_str = ""
 enable_mimir = boolean_input("Enable Mimir", True)
 if enable_mimir:
     mimir_install_str = configure_mimir(disable_affinity)
 
+print("\nLOKI")
+loki_install_str = ""
 enable_loki = boolean_input("Enable Loki", True)
 if enable_loki:
     loki_install_str = configure_loki(disable_affinity)
 
+print("\nTEMPO")
+tempo_install_str = ""
 enable_tempo = boolean_input("Enable Tempo", True)
 if enable_tempo:
     tempo_install_str = configure_tempo(disable_affinity)
 
-enable_grafana = boolean_input("Enable Grafana", True)
+print("\nALLOY")
+alloy_install_str = ""
+enable_alloy = boolean_input("Enable Alloy", True)
+if enable_alloy:
+    alloy_install_str = configure_alloy()
 
+print("\nKEDA")
+keda_install_str = ""
+enable_keda = boolean_input("Enable KEDA & cAdvisor", True)
+if enable_keda:
+    keda_install_str = f"""helm install --create-namespace -n keda keda kedacore/keda
+kubectl kustomize ../config/cadvisor | kubectl apply -f -"""
+
+print("\nGRAFANA")
+grafana_install_str = ""
+enable_grafana = boolean_input("Enable Grafana", True)
+if enable_grafana:
+    grafana_install_str = f"""kubectl create namespace grafana-monitoring --dry-run=client -o yaml | kubectl apply -f -
+kubectl apply -n grafana-monitoring -f ../config/grafana-deploy.yaml"""
+
+print("\nSENSORS")
+sensors_install_str = ""
 enable_sensors = boolean_input("Enable dummy sensors", True)
 if enable_sensors:
     sensors_install_str = configure_sensors()
 
+print("\nLOGGERS")
+loggers_install_str = ""
 enable_loggers = boolean_input("Enable dummy loggers", True)
 if enable_loggers:
     loggers_install_str = configure_loggers()
 
 with open("./start.sh", "w") as f:
     f.write("#!/bin/bash\n")
-    f.write(f"""helm repo add grafana https://grafana.github.io/helm-charts
+    f.write(f"""helm repo add kedacore https://kedacore.github.io/charts
+helm repo add grafana https://grafana.github.io/helm-charts
 helm repo add grafana-community https://grafana-community.github.io/helm-charts
 helm repo add minio https://charts.min.io/
 helm repo add strimzi https://strimzi.io/charts/
-kubectl create namespace grafana-monitoring --dry-run=client -o yaml | kubectl apply -f -
-{kafka_install_str}
-{minio_install_str}
-helm install --create-namespace -n alloy-monitoring -f ../config/alloy-values.yaml alloy grafana/alloy --version 1.8.1
+helm repo update
+{keda_install_str}\n
+{kafka_install_str}\n
+{minio_install_str}\n
+{alloy_install_str}\n
+{loki_install_str}\n
+{mimir_install_str}\n
+{tempo_install_str}\n
+{sensors_install_str}\n
+{loggers_install_str}\n
+{grafana_install_str}\n
 """)
-    if enable_loki:
-        f.write(f"{loki_install_str}\n")
-    if enable_mimir:
-        f.write(f"{mimir_install_str}\n")
-    if enable_tempo:
-        f.write(f"{tempo_install_str}\n")
-    if enable_sensors:
-        f.write(f"{sensors_install_str}\n")
-    if enable_loggers:
-        f.write(f"{loggers_install_str}\n")
-    if enable_grafana:
-        f.write("kubectl apply -n grafana-monitoring -f ../config/grafana-deploy.yaml\n")
+
 
 with open("./delete.sh", "w") as f:
     f.write("""#!/bin/bash
-kubectl delete deployment -n grafana-monitoring grafana
-kubectl delete statefulsets -n grafana-monitoring postgres
-helm delete -n logger-monitoring loggers
-helm delete -n sensor-monitoring sensors
-helm delete -n alloy-monitoring alloy
-helm delete -n tempo-monitoring tempo
-helm delete -n mimir-monitoring mimir
-helm delete -n loki-monitoring loki
-helm delete -n minio-monitoring minio
-kubectl delete deployment -n kafka kafka-cluster-entity-operator kafka-ui strimzi-cluster-operator
-kubectl delete -n kafka --all pods
+kubectl delete namespace \\
+        grafana-monitoring \\
+        logger-monitoring \\
+        sensor-monitoring \\
+        alloy-monitoring \\
+        tempo-monitoring \\
+        loki-monitoring \\
+        mimir-monitoring \\
+        minio-monitoring \\
+        kafka \\
+        cadvisor \\
+        keda
 """)

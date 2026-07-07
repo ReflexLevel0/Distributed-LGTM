@@ -77,4 +77,4 @@ compactor:
   replicas: 1
   affinity:
 
-replicas: 1
+replicas: 0

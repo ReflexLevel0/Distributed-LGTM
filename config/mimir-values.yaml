@@ -54,7 +54,7 @@ store_gateway:
   replicas: 2
 gateway:
   affinity:
-  replicas: 2
+  replicas: 1
 compactor:
   affinity:
   replicas: 1
