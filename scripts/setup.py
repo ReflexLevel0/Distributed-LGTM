@@ -410,20 +410,39 @@ kubectl apply -n minio-monitoring -f ../config/minio-retention-job.yaml"""
 
 
 def configure_kafka(disable_affinity: bool):
-    kafka_broker_replicas = number_input("Kafka broker replicas", 3)
+    # Kafka broker configuration
+    kafka_broker_replicas = number_input("Broker replicas", 3)
     data: CommentedMap = yaml.load(f"""
 spec:
   replicas: {kafka_broker_replicas}
     """)
     update_yaml(data, '../config/kafka-broker-values.yaml')
 
-    kafka_controller_replicas = number_input("Kafka controller replicas", 3)
+    # Kafka replication factor configuration
+    kafka_replication_factor = number_input("Replication factor", min(3, kafka_broker_replicas), 1, kafka_broker_replicas)
+    kafka_min_in_sync_replicas = number_input("Min in-sync replicas", max(1, kafka_replication_factor - 1), 1, kafka_replication_factor)
+    data: CommentedMap = yaml.load(f"""
+spec:
+  kafka:
+    config:
+      auto.create.topics.enable: "true"
+      offsets.topic.replication.factor: {kafka_replication_factor}
+      transaction.state.log.replication.factor: {kafka_replication_factor}
+      transaction.state.log.min.isr: {kafka_min_in_sync_replicas}
+      default.replication.factor: {kafka_replication_factor}
+      min.insync.replicas: {kafka_min_in_sync_replicas}
+    """)
+    update_yaml(data, '../config/kafka-values.yaml')
+
+    # Kafka controller configuration
+    kafka_controller_replicas = number_input("Controller replicas", 3)
     data: CommentedMap = yaml.load(f"""
 spec:
   replicas: {kafka_controller_replicas}
     """)
     update_yaml(data, '../config/kafka-controller-values.yaml')
     
+    # Kafka UI configuration
     enable_kafka_ui = boolean_input("Enable Kafka UI", True)
 
     return f"""kubectl create namespace kafka --dry-run=client -o yaml | kubectl apply -f -
