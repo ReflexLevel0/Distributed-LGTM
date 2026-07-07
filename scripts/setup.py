@@ -201,7 +201,7 @@ def configure_loki(disable_affinity: bool):
     if loki_deploy_mode in [LokiDeployment.SIMPLE_SCALABLE, LokiDeployment.MICROSERVICE]:
         max_concurrent_queries = number_input("Max concurrent queries processed by queriers", 4, 1)
 
-    chunks_cache_mb = number_input("Chunk cache size [MB] (if 0, cache is disabled)", 2048)
+    chunks_cache_mb = number_input("Chunk cache size [MB] (if 0, cache is disabled)", 2048, 0)
 
     data: CommentedMap = yaml.load(f"""
 loki:
@@ -331,7 +331,7 @@ replicas: {single_binary_replicas}
         yaml_enable_affinity(data, components)
 
     update_yaml(data, '../config/tempo-values.yaml')
-    return f"helm install --create-namespace -n tempo-monitoring -f ../config/tempo-values.yaml tempo grafana-community/{"tempo --version 2.1.0" if tempo_deploy_mode == 1 else "tempo-distributed --version 2.18.0"}"
+    return f"helm install --create-namespace -n tempo-monitoring -f ../config/tempo-values.yaml tempo grafana-community/{"tempo --version 2.1.0" if tempo_deploy_mode == TempoDeployment.MONOLITHIC else "tempo-distributed --version 2.18.0"}"
 
 
 def configure_alloy():
