@@ -1,22 +1,11 @@
-# pre-requisites
-minikube
-docker (non-rootless)/docker desktop
-helm
-python3
-"pip install ruamel.yaml"
-
-# starting minikube
-minikube start --extra-config=kubelet.max-pods=500
-minikube addons enable metrics-server
-minikube dashboard
-
 # Installation
 To install pre-requisite programs needed to run the LGTM stack, execute all of the following steps:
-1) install minikube/docker desktop/any other kubernetes cluster
-2) install docker (non-rootless)
-3) install helm
-4) install python3
-5) "pip install ruamel.yaml"
+1) install minikube/docker desktop/any other Kubernetes cluster
+2) install kubectl and make sure the configured cluster is accessible with it
+3) install docker (non-rootless)
+4) install helm
+5) install python3
+6) "pip install ruamel.yaml"
 
 # Setup
 Run "scripts/setup.sh" script from inside the scripts directory
