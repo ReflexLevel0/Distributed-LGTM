@@ -272,7 +272,7 @@ def configure_tempo(disable_affinity: bool):
     query_frontend_replicas = 0
     distributor_replicas = 0
     compactor_replicas = 0
-    tempo_replication_factor = None
+    tempo_replication_factor = 0
 
     if tempo_deploy_mode == TempoDeployment.MONOLITHIC:
         single_binary_replicas = 1

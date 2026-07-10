@@ -44,9 +44,11 @@ if __name__ == '__main__':
     now_ns = str(int(time.time() * 1e9))
 
     if(len(sys.argv) != 4):
+        error_msg = 'ERROR: 3 arguments expected but got ' + str(len(sys.argv)) + '; usage: ./dummy_logger.py [loggerID] [linesPerSecond] [datasetFilePath]'
++       print(error_msg)
         push_logs(
             labels={'job': 'dummy-logger', 'env': 'dev'},
-            entries=[(now_ns, 'ERROR: 3 arguments expected but got ' + str(len(sys.argv)) + '; usage: ./dummy_logger.py [loggerID] [linesPerSecond] [datasetFilePath]')],
+            entries=[(now_ns, error_msg)],
             headers={'X-Scope-OrgId': 'foo'}
         )
         exit()
