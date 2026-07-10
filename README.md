@@ -13,18 +13,15 @@ Run "scripts/setup.sh" script from inside the scripts directory
 IMPORTANT: choose "yes" when asked whether "Disable affinity" if running locally (on one computer, with no other computers available to the cluster), otherwise deployments will fail.
 
 # Deployment
-1a) If using minikube, run:
-"minikube start"
+1. if using minikube run: "minikube start", otherwise start the non-minikube cluster
 
-1b) If using another kubernetes cluster, start it.
-
-2) run "scripts/start.sh" script from inside the scripts directory
+2. run "scripts/start.sh" script from inside the scripts directory
 
 # Deletion
-run "scripts/stop.sh" script from inside the scripts directory
+Run "scripts/delete.sh" script from inside the scripts directory in order to delete all the deployed applications.
 
-# Adding/reducing sensor count
-run "scripts/change_sensor_count.sh" script from inside the scripts directory
+# Change sensor/logger count
+Run "scripts/change_sensor_count.sh" and "scripts/change_logger_count.sh" scripts from inside the scripts directory in order to change the number of running sensors or loggers.
 
 # Upgrading
 After manually changing helm files it is possible to update the running deployment by running "helm upgrade".
